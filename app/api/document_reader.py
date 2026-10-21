@@ -33,7 +33,6 @@ class ผลการอ่านภาค(BaseModel):
     term_label: str
     gpax: Optional[float]
     fw_count: Optional[int]
-    midterm_score: Optional[float]
 
 
 class ผลการอ่านเอกสาร(BaseModel):
@@ -60,9 +59,8 @@ OUTPUT_SCHEMA = {
                     "term_label": {"type": "string"},
                     "gpax": {"type": ["number", "null"]},
                     "fw_count": {"type": ["integer", "null"]},
-                    "midterm_score": {"type": ["number", "null"]},
                 },
-                "required": ["term_label", "gpax", "fw_count", "midterm_score"],
+                "required": ["term_label", "gpax", "fw_count"],
                 "additionalProperties": False,
             },
         },
@@ -80,7 +78,6 @@ EXTRACTION_PROMPT = """เอกสารที่แนบมาเป็นเ
   - term_label: ชื่อภาคตามเอกสาร เช่น "1/2567"
   - gpax: เกรดเฉลี่ยสะสม ณ สิ้นภาคนั้น (GPAX / CUM. GPA / เกรดเฉลี่ยสะสม) ไม่ใช่เกรดเฉลี่ยรายภาค (GPA / GPS)
   - fw_count: จำนวนรายวิชาในภาคนั้นที่ได้เกรด F หรือ W
-  - midterm_score: คะแนนเก็บหรือคะแนนกลางภาครวมเป็นเปอร์เซ็นต์ (0-100) ถ้าเอกสารมีให้
 
 กติกา
 - ห้ามเดาหรือคำนวณค่าที่ไม่มีในเอกสาร ถ้าไม่มีหรืออ่านไม่ชัด ให้ใส่ null
@@ -100,8 +97,7 @@ def ตรวจค่าที่อ่านได้(term):
     """ตัดค่าที่อยู่นอกช่วงที่เป็นไปได้ทิ้ง (เป็น null) ให้ผู้ใช้กรอกเอง แทนการส่งค่าผิดเข้าโมเดล"""
     gpax = term.gpax if term.gpax is not None and 0 <= term.gpax <= 4 else None
     fw = term.fw_count if term.fw_count is not None and 0 <= term.fw_count <= 15 else None
-    mid = term.midterm_score if term.midterm_score is not None and 0 <= term.midterm_score <= 100 else None
-    return {"term_label": term.term_label, "gpax": gpax, "fw_count": fw, "midterm_score": mid}
+    return {"term_label": term.term_label, "gpax": gpax, "fw_count": fw}
 
 
 @router.post("/extract-transcript", summary="อ่านภาพ/PDF เอกสารผลการเรียนด้วย AI แล้วส่งค่ากลับมาให้ตรวจสอบ")

@@ -1,10 +1,9 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List
 
 class ผลการเรียนรายภาค(BaseModel):
     gpax: float = Field(..., ge=0, le=4, title="เกรดเฉลี่ยสะสม (GPAX) ณ สิ้นภาคเรียน", example=1.75)
     fw_count: int = Field(..., ge=0, le=15, title="จำนวนวิชาที่ได้ F หรือ W ในภาคเรียนนี้", example=2)
-    midterm_score: Optional[float] = Field(None, ge=0, le=100, title="คะแนนเก็บ/กลางภาค (%) (บังคับเฉพาะภาคล่าสุด)", example=48.0)
 
 class ข้อมูลนักศึกษาขาเข้า(BaseModel):
     student_id: str = Field(..., title="รหัสนักศึกษา", example="67123456")
@@ -14,17 +13,9 @@ class ข้อมูลนักศึกษาขาเข้า(BaseModel):
     term_results: List[ผลการเรียนรายภาค] = Field(
         ..., min_length=1, max_length=8,
         title="ผลการเรียนรายภาคเรียน (เรียงจากภาคแรกถึงภาคล่าสุด 1-8 ภาค)",
-        example=[{"gpax": 2.10, "fw_count": 1, "midterm_score": 60}, {"gpax": 1.85, "fw_count": 1, "midterm_score": 52},
-                 {"gpax": 1.75, "fw_count": 2, "midterm_score": 48}]
+        example=[{"gpax": 2.10, "fw_count": 1}, {"gpax": 1.85, "fw_count": 1}, {"gpax": 1.75, "fw_count": 2}]
     )
     credits_earned: int = Field(..., ge=0, le=300, title="หน่วยกิตที่สะสมได้", example=45)
-    credits_planned: int = Field(..., gt=0, le=300, title="หน่วยกิตตามแผนการเรียน (ถึงปัจจุบัน)", example=54)
-
-    @model_validator(mode="after")
-    def ภาคล่าสุดต้องมีคะแนนเก็บ(self):
-        if self.term_results and self.term_results[-1].midterm_score is None:
-            raise ValueError("ภาคเรียนล่าสุดต้องกรอกคะแนนเก็บ/กลางภาค (%)")
-        return self
 
     class Config:
         title = "ข้อมูลนักศึกษาสำหรับวิเคราะห์"

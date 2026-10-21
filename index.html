@@ -81,7 +81,7 @@
                     </div>
                     <div>
                         <h2 class="text-base font-bold text-slate-800">กรอกข้อมูลนักศึกษา</h2>
-                        <p class="text-xs text-slate-500">ระบุ 5 ตัวแปรวิกฤตเพื่อให้ AI วิเคราะห์ร่วมกับเกณฑ์ข้อบังคับการพ้นสภาพ</p>
+                        <p class="text-xs text-slate-500">ระบุผลการเรียนเพื่อให้ AI วิเคราะห์ร่วมกับเกณฑ์ข้อบังคับการพ้นสภาพ</p>
                     </div>
                 </div>
                 <button type="button" onclick="fillDemoData()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-semibold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
@@ -106,7 +106,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1.5">ชั้นปี <span class="text-red-500">*</span></label>
                         <select id="academic_year" required class="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
@@ -120,10 +120,6 @@
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1.5">หน่วยกิตที่สะสมได้ <span class="text-red-500">*</span></label>
                         <input type="number" step="1" min="0" max="300" id="credits_earned" required class="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="เช่น 45">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">หน่วยกิตตามแผนการเรียน (ถึงปัจจุบัน) <span class="text-red-500">*</span></label>
-                        <input type="number" step="1" min="1" max="300" id="credits_planned" required class="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="เช่น 54">
                     </div>
                 </div>
 
@@ -152,8 +148,8 @@
                         <div id="docNotes" class="hidden text-[11px] mt-2 px-3 py-2 rounded-lg"></div>
                     </div>
 
-                    <div class="grid grid-cols-[1fr_1fr_1fr_2.25rem] md:grid-cols-[6rem_1fr_1fr_1fr_2.5rem] gap-2 text-[11px] font-bold text-slate-500 px-1 mb-1.5">
-                        <span class="hidden md:block">ภาคเรียน</span><span>GPAX สะสม</span><span>วิชา F/W</span><span>คะแนนเก็บ (%)</span><span></span>
+                    <div class="grid grid-cols-[1fr_1fr_2.25rem] md:grid-cols-[6rem_1fr_1fr_2.5rem] gap-2 text-[11px] font-bold text-slate-500 px-1 mb-1.5">
+                        <span class="hidden md:block">ภาคเรียน</span><span>GPAX สะสม</span><span>วิชา F/W</span><span></span>
                     </div>
                     <div id="termRows" class="space-y-2"></div>
                 </div>
@@ -187,7 +183,7 @@
                     </div>
                     <div>
                         <h2 class="text-base font-bold text-slate-800">นำเข้าข้อมูลจากไฟล์ Excel</h2>
-                        <p class="text-xs text-slate-500">อัปโหลดไฟล์ Excel เพื่อทำนายผลนักศึกษาหลายคนพร้อมกัน</p>
+                        <p class="text-xs text-slate-500">อัปโหลดไฟล์ Excel/CSV ที่มีรหัสนักศึกษาและ GPAX (หัวคอลัมน์ไทยหรืออังกฤษก็ได้) หรือใช้ไฟล์ตัวอย่าง</p>
                     </div>
                 </div>
                 <a href="/api/v1/import-template" data-api-link="/import-template" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
@@ -196,7 +192,7 @@
             </div>
             
             <div class="flex flex-col md:flex-row items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <input type="file" id="excelFile" accept=".xlsx, .xls" class="w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" class="w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
                 <button onclick="uploadExcel()" class="w-full md:w-auto whitespace-nowrap text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-3 rounded-xl transition shadow-sm">
                     📤 อัปโหลดและประเมินผล
                 </button>
@@ -262,19 +258,18 @@
             return v === null || v === undefined ? "" : v;
         }
 
-        function addTermRow(gpax = "", fw = "", midterm = "", label = "") {
+        function addTermRow(gpax = "", fw = "", label = "") {
             const rows = document.getElementById('termRows');
             if (rows.children.length >= MAX_TERMS) return;
             const row = document.createElement('div');
-            // จอมือถือ: บรรทัดบนเป็นชื่อภาค + ปุ่มลบ บรรทัดล่างเป็นช่องกรอก 3 ช่อง | จอใหญ่: แถวเดียว
-            row.className = "term-row grid grid-cols-[1fr_1fr_1fr_2.25rem] md:grid-cols-[6rem_1fr_1fr_1fr_2.5rem] gap-x-2 gap-y-1 items-center";
+            // จอมือถือ: บรรทัดบนเป็นชื่อภาค + ปุ่มลบ บรรทัดล่างเป็นช่องกรอก 2 ช่อง | จอใหญ่: แถวเดียว
+            row.className = "term-row grid grid-cols-[1fr_1fr_2.25rem] md:grid-cols-[6rem_1fr_1fr_2.5rem] gap-x-2 gap-y-1 items-center";
             row.dataset.label = label;
             const inputClass = "w-full min-w-0 px-2.5 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition order-3 md:order-2";
             row.innerHTML = `
-                <span class="term-label col-span-3 md:col-span-1 order-1 text-xs font-semibold text-slate-600 px-1 leading-tight"></span>
+                <span class="term-label col-span-2 md:col-span-1 order-1 text-xs font-semibold text-slate-600 px-1 leading-tight"></span>
                 <input type="number" step="0.01" min="0" max="4" required value="${valueOrEmpty(gpax)}" class="term-gpax ${inputClass}" placeholder="0.00-4.00">
                 <input type="number" step="1" min="0" max="15" required value="${valueOrEmpty(fw)}" class="term-fw ${inputClass}" placeholder="0, 1, 2">
-                <input type="number" step="0.1" min="0" max="100" value="${valueOrEmpty(midterm)}" class="term-midterm ${inputClass}" placeholder="0-100">
                 <button type="button" onclick="removeTermRow(this)" class="term-remove order-2 md:order-3 h-9 md:h-10 rounded-xl text-red-500 bg-red-50 hover:bg-red-100 transition text-sm" title="ลบภาคเรียนนี้">✕</button>
             `;
             rows.appendChild(row);
@@ -290,7 +285,7 @@
 
         function setTermRows(terms) {
             document.getElementById('termRows').innerHTML = "";
-            terms.forEach(t => addTermRow(t.gpax, t.fw_count, t.midterm_score, t.term_label || ""));
+            terms.forEach(t => addTermRow(t.gpax, t.fw_count, t.term_label || ""));
             if (terms.length === 0) addTermRow();
         }
 
@@ -300,10 +295,6 @@
                 const isLatest = i === rows.length - 1;
                 const name = row.dataset.label ? row.dataset.label : `ภาคที่ ${i + 1}`;
                 row.querySelector('.term-label').innerText = name + (isLatest ? ' (ล่าสุด)' : '');
-                // คะแนนเก็บบังคับเฉพาะภาคล่าสุด เพราะใช้ในการทำนาย
-                const mid = row.querySelector('.term-midterm');
-                mid.required = isLatest;
-                mid.placeholder = isLatest ? "0-100 *" : "ไม่บังคับ";
                 const btn = row.querySelector('.term-remove');
                 btn.disabled = rows.length <= MIN_TERMS;
                 btn.classList.toggle('opacity-30', btn.disabled);
@@ -315,14 +306,10 @@
         }
 
         function getTermResults() {
-            return [...document.querySelectorAll('#termRows .term-row')].map(row => {
-                const mid = row.querySelector('.term-midterm').value;
-                return {
-                    gpax: parseFloat(row.querySelector('.term-gpax').value),
-                    fw_count: parseInt(row.querySelector('.term-fw').value),
-                    midterm_score: mid === "" ? null : parseFloat(mid)
-                };
-            });
+            return [...document.querySelectorAll('#termRows .term-row')].map(row => ({
+                gpax: parseFloat(row.querySelector('.term-gpax').value),
+                fw_count: parseInt(row.querySelector('.term-fw').value)
+            }));
         }
 
         // ===== อ่านเอกสารผลการเรียนด้วย AI =====
@@ -394,7 +381,6 @@
                 const missing = result.terms.filter(t => t.gpax === null || t.fw_count === null).length;
                 let msg = `✅ AI อ่านได้ ${result.terms.length} ภาคเรียน กรุณาตรวจตัวเลขกับเอกสารก่อนบันทึก`;
                 if (missing) msg += ` (มี ${missing} ภาคที่อ่านค่าไม่ได้ ต้องกรอกเอง)`;
-                if (result.terms[result.terms.length - 1].midterm_score === null) msg += " • อย่าลืมกรอกคะแนนเก็บของภาคล่าสุด";
                 if (result.notes) msg += `\nหมายเหตุจาก AI: ${result.notes}`;
                 showDocNotes(msg, missing ? "info" : "ok");
             } catch (error) {
@@ -411,11 +397,10 @@
             document.getElementById('last_name').value = "ตั้งใจเรียน";
             document.getElementById('academic_year').value = "2";
             document.getElementById('credits_earned').value = "45";
-            document.getElementById('credits_planned').value = "54";
             setTermRows([
-                { gpax: 2.10, fw_count: 1, midterm_score: 60 },
-                { gpax: 1.85, fw_count: 1, midterm_score: 52 },
-                { gpax: 1.75, fw_count: 2, midterm_score: 48 }
+                { gpax: 2.10, fw_count: 1 },
+                { gpax: 1.85, fw_count: 1 },
+                { gpax: 1.75, fw_count: 2 }
             ]);
         }
 
@@ -436,8 +421,7 @@
                 last_name: document.getElementById('last_name').value,
                 academic_year: parseInt(document.getElementById('academic_year').value),
                 term_results: getTermResults(),
-                credits_earned: parseInt(document.getElementById('credits_earned').value),
-                credits_planned: parseInt(document.getElementById('credits_planned').value)
+                credits_earned: parseInt(document.getElementById('credits_earned').value)
             };
 
             if (![1, 2, 3, 4].includes(data.academic_year)) {
@@ -449,18 +433,13 @@
                 return;
             }
             const badTerm = data.term_results.findIndex(t =>
-                isNaN(t.gpax) || t.gpax < 0 || t.gpax > 4 || isNaN(t.fw_count) || t.fw_count < 0 ||
-                (t.midterm_score !== null && (isNaN(t.midterm_score) || t.midterm_score < 0 || t.midterm_score > 100)));
+                isNaN(t.gpax) || t.gpax < 0 || t.gpax > 4 || isNaN(t.fw_count) || t.fw_count < 0);
             if (badTerm !== -1) {
-                alert(`ภาคที่ ${badTerm + 1}: GPAX ต้องอยู่ระหว่าง 0.00 - 4.00, วิชา F/W ต้องไม่ติดลบ และคะแนนเก็บต้องอยู่ระหว่าง 0 - 100%`);
+                alert(`ภาคที่ ${badTerm + 1}: GPAX ต้องอยู่ระหว่าง 0.00 - 4.00 และวิชา F/W ต้องไม่ติดลบ`);
                 return;
             }
-            if (data.term_results[data.term_results.length - 1].midterm_score === null) {
-                alert("กรุณากรอกคะแนนเก็บ/กลางภาค (%) ของภาคเรียนล่าสุด");
-                return;
-            }
-            if (data.credits_earned < 0 || data.credits_planned < 1) {
-                alert("หน่วยกิตต้องไม่ติดลบ (หน่วยกิตตามแผนต้องมากกว่า 0)");
+            if (isNaN(data.credits_earned) || data.credits_earned < 0) {
+                alert("หน่วยกิตที่สะสมได้ต้องไม่ติดลบ");
                 return;
             }
 
@@ -472,7 +451,7 @@
                 });
 
                 if (response.status === 422) {
-                    alert("ข้อมูลไม่ถูกต้อง: ผลการเรียน 1-8 ภาค (GPAX 0-4, คะแนนเก็บ 0-100% ภาคล่าสุดต้องกรอก), ชั้นปี 1-4, ค่าอื่นต้องไม่ติดลบ");
+                    alert("ข้อมูลไม่ถูกต้อง: ผลการเรียน 1-8 ภาค (GPAX 0-4), ชั้นปี 1-4, ค่าอื่นต้องไม่ติดลบ");
                     return;
                 }
                 if (!response.ok) throw new Error("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
@@ -501,9 +480,9 @@
                     body: formData
                 });
 
-                if (!response.ok) throw new Error("เกิดข้อผิดพลาดในการอัปโหลดไฟล์");
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.detail || "เกิดข้อผิดพลาดในการอัปโหลดไฟล์");
 
-                const result = await response.json();
                 alert(result.message);
                 fileInput.value = "";
                 loadStudents();
