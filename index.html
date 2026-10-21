@@ -244,9 +244,14 @@
     </main>
 
     <script>
-        // ใช้โดเมนเดียวกับหน้าเว็บ (เปิดผ่าน localhost, IP ในวง LAN หรือลิงก์สาธารณะได้หมด)
-        // ถ้าเปิดไฟล์ index.html ตรง ๆ (file://) ให้ชี้ไปที่ server ในเครื่อง
-        const API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : window.location.origin;
+        // ใช้โดเมนเดียวกับหน้าเว็บ (เปิดผ่าน server ของระบบ, IP ในวง LAN หรือลิงก์สาธารณะได้หมด)
+        // ถ้าเปิดไฟล์ index.html ตรง ๆ (file://) หรือผ่านโปรแกรมอื่นในเครื่อง เช่น VS Code Live Server (พอร์ต 5500)
+        // พอร์ตนั้นไม่มี API จึงต้องชี้ไปที่ server ของระบบที่พอร์ต 8000
+        const LOCAL_API = "http://127.0.0.1:8000";
+        const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+        const API_BASE = window.location.protocol === "file:" || (isLocalHost && window.location.port !== "8000")
+            ? LOCAL_API
+            : window.location.origin;
         const API_URL = `${API_BASE}/api/v1`;
         document.querySelectorAll('[data-api-link]').forEach(a => a.href = API_URL + a.dataset.apiLink);
 
