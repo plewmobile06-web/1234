@@ -250,6 +250,14 @@
         const API_URL = `${API_BASE}/api/v1`;
         document.querySelectorAll('[data-api-link]').forEach(a => a.href = API_URL + a.dataset.apiLink);
 
+        // fetch ล้มเหลวแบบ TypeError = ติดต่อ server ไม่ได้เลย (server ไม่ได้รัน หรือเบราว์เซอร์บล็อก)
+        function connectionHelp(error) {
+            return `ติดต่อ server ไม่ได้ (${API_BASE})\n` +
+                "- ตรวจว่ารัน server อยู่ (python -m uvicorn main:app --host 127.0.0.1 --port 8000)\n" +
+                "- แนะนำให้เปิดหน้าเว็บผ่าน http://127.0.0.1:8000 แทนการดับเบิลคลิกไฟล์ index.html\n" +
+                `(รายละเอียด: ${error.message})`;
+        }
+
         const MIN_TERMS = 1;
         const MAX_TERMS = 8;
 
@@ -454,13 +462,17 @@
                     alert("ข้อมูลไม่ถูกต้อง: ผลการเรียน 1-8 ภาค (GPAX 0-4), ชั้นปี 1-4, ค่าอื่นต้องไม่ติดลบ");
                     return;
                 }
-                if (!response.ok) throw new Error("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    alert("วิเคราะห์ไม่สำเร็จ: " + (err.detail || `server ตอบกลับรหัส ${response.status}`));
+                    return;
+                }
 
                 const result = await response.json();
                 showResult(result);
                 loadStudents();
             } catch (error) {
-                alert("ไม่สามารถเชื่อมต่อ API ได้: " + error.message);
+                alert(connectionHelp(error));
             }
         }
 
@@ -487,7 +499,7 @@
                 fileInput.value = "";
                 loadStudents();
             } catch (error) {
-                alert("อัปโหลดไม่สำเร็จ: " + error.message);
+                alert(error instanceof TypeError ? connectionHelp(error) : "อัปโหลดไม่สำเร็จ: " + error.message);
             }
         }
 

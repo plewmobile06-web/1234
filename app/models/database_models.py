@@ -20,6 +20,6 @@ class RiskPrediction(Base):
     prediction_id = Column(Integer, primary_key=True, autoincrement=True)
     student_id = Column(String(20), ForeignKey("students.student_id"))
     risk_score = Column(Numeric(5, 2))
-    risk_level = Column(String(20))
+    risk_level = Column(String(100))  # เช่น "🟢 กลุ่มปกติ (ไม่มีความเสี่ยง)" ยาวเกิน 20 ตัวอักษร
     shap_explanation = Column(JSON)
     predicted_at = Column(TIMESTAMP, server_default=func.now())

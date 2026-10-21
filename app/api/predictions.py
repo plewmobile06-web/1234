@@ -7,6 +7,7 @@ import io
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.schemas import ข้อมูลนักศึกษาขาเข้า, ผลการทำนายความเสี่ยง, ปัจจัยความเสี่ยงจากAI
 from app.core.database import get_db
@@ -112,78 +113,118 @@ def ตรวจเกณฑ์ข้อบังคับ(gpax, probation_terms
     return level, alerts
 
 
-def ประเมินความเสี่ยง(features, academic_year, n_terms):
-    """ทำนายด้วย AI แล้วปรับระดับความเสี่ยงขึ้นตามเกณฑ์ข้อบังคับ (ใช้ระดับที่สูงกว่า)"""
-    input_df = pd.DataFrame([features])[list(model.feature_names_in_)]
+def ประเมินหลายคน(features_list, academic_years, n_terms_list):
+    """ทำนายด้วย AI ทีเดียวทั้งชุด แล้วปรับระดับความเสี่ยงขึ้นตามเกณฑ์ข้อบังคับ (ใช้ระดับที่สูงกว่า)
+    คืนค่า list ของ (score_percent, risk_status, key_factors, alerts) ตามลำดับเดิม"""
+    input_df = pd.DataFrame(features_list)[list(model.feature_names_in_)]
+    probs = model.predict_proba(input_df)[:, 1]
+    shap_values = explainer(input_df).values
 
-    prob = float(model.predict_proba(input_df)[0][1])
-    score_percent = round(prob * 100, 2)
-    if score_percent >= 51.0:
-        ai_level = 2
-    elif score_percent >= 41.0:
-        ai_level = 1
-    else:
-        ai_level = 0
-
-    rule_level, alerts = ตรวจเกณฑ์ข้อบังคับ(features['gpax'], features['probation_terms'], academic_year, n_terms)
-    if rule_level > ai_level:
-        alerts.append("ระดับความเสี่ยงถูกปรับขึ้นตามเกณฑ์ข้อบังคับการพ้นสภาพ")
-    risk_status = RISK_LEVELS[max(ai_level, rule_level)]
-
-    shap_values = explainer(input_df)
-    key_factors = []
-    for name, val, shap_val in zip(input_df.columns, input_df.iloc[0], shap_values.values[0]):
-        if hasattr(shap_val, "__len__"):
-            shap_val = float(shap_val[1]) if len(shap_val) > 1 else float(shap_val[0])
+    results = []
+    for i, features in enumerate(features_list):
+        score_percent = round(float(probs[i]) * 100, 2)
+        if score_percent >= 51.0:
+            ai_level = 2
+        elif score_percent >= 41.0:
+            ai_level = 1
         else:
-            shap_val = float(shap_val)
-        key_factors.append(
-            ปัจจัยความเสี่ยงจากAI(
-                feature_name=thai_names.get(name, name),
-                current_value=float(val),
-                risk_contribution=shap_val
-            )
-        )
-    key_factors.sort(key=lambda x: abs(x.risk_contribution), reverse=True)
+            ai_level = 0
 
-    return score_percent, risk_status, key_factors, alerts
+        rule_level, alerts = ตรวจเกณฑ์ข้อบังคับ(features['gpax'], features['probation_terms'],
+                                              academic_years[i], n_terms_list[i])
+        if rule_level > ai_level:
+            alerts.append("ระดับความเสี่ยงถูกปรับขึ้นตามเกณฑ์ข้อบังคับการพ้นสภาพ")
+        risk_status = RISK_LEVELS[max(ai_level, rule_level)]
+
+        key_factors = []
+        for name, val, shap_val in zip(input_df.columns, input_df.iloc[i], shap_values[i]):
+            if hasattr(shap_val, "__len__"):
+                shap_val = float(shap_val[1]) if len(shap_val) > 1 else float(shap_val[0])
+            else:
+                shap_val = float(shap_val)
+            key_factors.append(
+                ปัจจัยความเสี่ยงจากAI(
+                    feature_name=thai_names.get(name, name),
+                    current_value=float(val),
+                    risk_contribution=shap_val
+                )
+            )
+        key_factors.sort(key=lambda x: abs(x.risk_contribution), reverse=True)
+        results.append((score_percent, risk_status, key_factors, alerts))
+    return results
+
+
+def บันทึกหลายคน(db, records):
+    """records: list ของ (student_id, first_name, last_name, academic_year, term_results, credits_earned)
+    ทำนายทั้งชุดในครั้งเดียวและบันทึกใน transaction เดียว (เร็วพอสำหรับไฟล์หลักพันคน)
+    รหัสซ้ำในชุดเดียวกันใช้แถวหลังสุด"""
+    unique = {}
+    for rec in records:
+        unique[rec[0]] = rec
+    records = list(unique.values())
+    if not records:
+        return []
+
+    features_list = [สร้างฟีเจอร์(rec[4], rec[5]) for rec in records]
+    results = ประเมินหลายคน(features_list, [rec[3] for rec in records], [len(rec[4]) for rec in records])
+
+    # ดึงนักศึกษาที่มีอยู่แล้วทีละก้อน แทนการ query ทีละคน
+    ids = [rec[0] for rec in records]
+    existing = {}
+    for start in range(0, len(ids), 500):
+        for s in db.query(Student).filter(Student.student_id.in_(ids[start:start + 500])):
+            existing[s.student_id] = s
+
+    # บันทึกนักศึกษาก่อน แล้วค่อยบันทึกผลทำนาย (risk_predictions อ้างอิง students ด้วย foreign key)
+    for rec, features in zip(records, features_list):
+        student_id, first_name, last_name, academic_year, term_results, credits_earned = rec
+        db_student = existing.get(student_id)
+        if not db_student:
+            db_student = Student(
+                student_id=student_id,
+                first_name=first_name,
+                last_name=last_name,
+                highschool_gpa=features['gpax'],
+                academic_year=academic_year
+            )
+            db.add(db_student)
+            existing[student_id] = db_student
+        else:
+            db_student.first_name = first_name
+            db_student.last_name = last_name
+            db_student.highschool_gpa = features['gpax']
+            if academic_year is not None:
+                db_student.academic_year = academic_year
+    db.flush()
+
+    for rec, features, (score_percent, risk_status, key_factors, alerts) in zip(records, features_list, results):
+        student_id, credits_earned, term_results = rec[0], rec[5], rec[4]
+        db.add(RiskPrediction(
+            student_id=student_id,
+            risk_score=score_percent,
+            risk_level=risk_status,
+            shap_explanation={
+                "ปัจจัยหลัก": [f.dict() for f in key_factors],
+                "ข้อมูลที่ใช้ทำนาย": features,
+                "ผลการเรียนรายภาค": term_results,
+                "หน่วยกิตสะสม": credits_earned,
+                "เกณฑ์ข้อบังคับ": alerts,
+            }
+        ))
+    db.commit()
+    return results
 
 
 def บันทึกผลการประเมิน(db, student_id, first_name, last_name, academic_year,
                       term_results, credits_earned):
-    features = สร้างฟีเจอร์(term_results, credits_earned)
-    db_student = db.query(Student).filter(Student.student_id == student_id).first()
-    if not db_student:
-        db_student = Student(
-            student_id=student_id,
-            first_name=first_name,
-            last_name=last_name,
-            highschool_gpa=features['gpax'],
-            academic_year=academic_year
-        )
-        db.add(db_student)
-    else:
-        db_student.highschool_gpa = features['gpax']
-        if academic_year is not None:
-            db_student.academic_year = academic_year
-    db.commit()
+    return บันทึกหลายคน(db, [(student_id, first_name, last_name, academic_year, term_results, credits_earned)])[0]
 
-    score_percent, risk_status, key_factors, alerts = ประเมินความเสี่ยง(features, academic_year, len(term_results))
 
-    db_prediction = RiskPrediction(
-        student_id=student_id,
-        risk_score=score_percent,
-        risk_level=risk_status,
-        shap_explanation={
-            "ปัจจัยหลัก": [f.dict() for f in key_factors],
-            "ข้อมูลที่ใช้ทำนาย": features,
-            "ผลการเรียนรายภาค": term_results,
-            "เกณฑ์ข้อบังคับ": alerts,
-        }
-    )
-    db.add(db_prediction)
-    db.commit()
-    return score_percent, risk_status, key_factors, alerts
+def ดึงผลล่าสุดทุกคน(db):
+    """ผลทำนายล่าสุดของนักศึกษาทุกคนใน query เดียว (prediction_id มากสุด = ล่าสุด)"""
+    latest_ids = (db.query(func.max(RiskPrediction.prediction_id))
+                  .group_by(RiskPrediction.student_id).scalar_subquery())
+    return {p.student_id: p for p in db.query(RiskPrediction).filter(RiskPrediction.prediction_id.in_(latest_ids))}
 
 
 @router.post(
@@ -218,10 +259,11 @@ def ทำนายและบันทึกข้อมูลนักศึ�
 
 @router.get("/students", summary="ดึงรายชื่อนักศึกษาทั้งหมด")
 def ดึงรายชื่อนักศึกษา(db: Session = Depends(get_db)):
-    students = db.query(Student).all()
+    students = db.query(Student).order_by(Student.created_at, Student.student_id).all()
+    latest = ดึงผลล่าสุดทุกคน(db)
     results = []
     for s in students:
-        latest_pred = db.query(RiskPrediction).filter(RiskPrediction.student_id == s.student_id).order_by(RiskPrediction.predicted_at.desc()).first()
+        latest_pred = latest.get(s.student_id)
         results.append({
             "student_id": s.student_id,
             "name": f"{s.first_name} {s.last_name}",
@@ -251,27 +293,39 @@ def ลบข้อมูลนักศึกษาทั้งหมด(db: Se
 
 @router.get("/export-excel", summary="ดาวน์โหลดรายชื่อนักศึกษาทั้งหมดเป็นไฟล์ Excel")
 def ดาวน์โหลดไฟล์Excel(db: Session = Depends(get_db)):
-    students = db.query(Student).all()
-    data_list = []
+    students = db.query(Student).order_by(Student.created_at, Student.student_id).all()
+    latest = ดึงผลล่าสุดทุกคน(db)
 
+    # คอลัมน์ข้อมูลนักศึกษาใช้ชื่อที่หน้า "นำเข้า Excel" อ่านได้ จึงนำไฟล์รายงานนี้กลับเข้าระบบได้ครบทุกภาค
+    term_headers = [h for t in range(1, MAX_TERMS + 1) for h in (f"GPAX ภาค {t}", f"F/W ภาค {t}")]
+    columns = (["รหัสนักศึกษา", "ชื่อ", "นามสกุล", "ชั้นปี", "หน่วยกิตสะสม"] + term_headers +
+               ["คะแนนความเสี่ยง (%)", "ระดับความเสี่ยง", "แจ้งเตือนตามข้อบังคับ", "วันที่ประเมินล่าสุด"])
+
+    data_list = []
     for s in students:
-        latest_pred = db.query(RiskPrediction).filter(RiskPrediction.student_id == s.student_id).order_by(RiskPrediction.predicted_at.desc()).first()
+        latest_pred = latest.get(s.student_id)
         explanation = (latest_pred.shap_explanation or {}) if latest_pred else {}
-        data_list.append({
+        terms = explanation.get("ผลการเรียนรายภาค") or []
+        # ข้อมูลเก่าที่ไม่มีประวัติรายภาค ใช้ GPAX ล่าสุดเป็นภาค 1
+        if not terms and s.highschool_gpa is not None:
+            terms = [{"gpax": float(s.highschool_gpa), "fw_count": 0}]
+        row = {
             "รหัสนักศึกษา": s.student_id,
-            "ชื่อ-นามสกุล": f"{s.first_name} {s.last_name}",
-            "ชั้นปี": s.academic_year if s.academic_year and 1 <= s.academic_year <= 4 else "-",
-            "เกรดเฉลี่ย (GPAX)": s.highschool_gpa,
-            "คะแนนความเสี่ยง (%)": latest_pred.risk_score if latest_pred else 0,
+            "ชื่อ": s.first_name,
+            "นามสกุล": s.last_name,
+            "ชั้นปี": s.academic_year if s.academic_year and 1 <= s.academic_year <= 4 else None,
+            "หน่วยกิตสะสม": explanation.get("หน่วยกิตสะสม"),
+            "คะแนนความเสี่ยง (%)": float(latest_pred.risk_score) if latest_pred else None,
             "ระดับความเสี่ยง": latest_pred.risk_level if latest_pred else "ยังไม่ได้ประเมิน",
             "แจ้งเตือนตามข้อบังคับ": " | ".join(explanation.get("เกณฑ์ข้อบังคับ", [])) or "-",
-            "วันที่ประเมินล่าสุด": str(latest_pred.predicted_at) if latest_pred else "-"
-        })
+            "วันที่ประเมินล่าสุด": str(latest_pred.predicted_at) if latest_pred else "-",
+        }
+        for t, term in enumerate(terms[:MAX_TERMS], start=1):
+            row[f"GPAX ภาค {t}"] = term.get("gpax")
+            row[f"F/W ภาค {t}"] = term.get("fw_count")
+        data_list.append(row)
 
-    if not data_list:
-        data_list = [{"รหัสนักศึกษา": "-", "ชื่อ-นามสกุล": "-", "ชั้นปี": "-", "เกรดเฉลี่ย (GPAX)": "-", "คะแนนความเสี่ยง (%)": "-", "ระดับความเสี่ยง": "-", "แจ้งเตือนตามข้อบังคับ": "-", "วันที่ประเมินล่าสุด": "-"}]
-
-    df = pd.DataFrame(data_list)
+    df = pd.DataFrame(data_list, columns=columns)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='รายงานความเสี่ยงนักศึกษา')
@@ -455,26 +509,30 @@ def นำเข้าไฟล์Excel(file: UploadFile = File(...), db: Sessio
         ))
 
     df, header_row, fields, term_cols = found
-    imported_count = 0
+    records = []
     skipped = []
-    try:
-        for r in range(header_row + 1, len(df)):
-            parsed, reason = อ่านแถวนักศึกษา(df.iloc[r].tolist(), fields, term_cols)
-            if reason:
-                skipped.append(reason)
-            if parsed:
-                บันทึกผลการประเมิน(db, *parsed)
-                imported_count += 1
-    except Exception as e:
-        db.rollback()
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    for r in range(header_row + 1, len(df)):
+        parsed, reason = อ่านแถวนักศึกษา(df.iloc[r].tolist(), fields, term_cols)
+        if reason:
+            skipped.append(reason)
+        if parsed:
+            records.append(parsed)
 
-    if imported_count == 0:
+    if not records:
         raise HTTPException(status_code=400, detail="ไม่มีนักศึกษาที่นำเข้าได้" + (
             f" | ตัวอย่างปัญหา: {'; '.join(skipped[:5])}" if skipped else " (ไม่มีข้อมูลใต้หัวคอลัมน์)"))
 
+    # ทำนายและบันทึกทั้งไฟล์ในครั้งเดียว ถ้าผิดพลาดกลางทางจะไม่บันทึกเลยสักคน (ไม่มีข้อมูลค้างครึ่ง ๆ)
+    try:
+        imported_count = len(บันทึกหลายคน(db, records))
+    except Exception as e:
+        db.rollback()
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"บันทึกไม่สำเร็จ (ยังไม่มีข้อมูลถูกบันทึก): {e}")
+
     message = f"นำเข้าและประเมินผลสำเร็จ {imported_count} คน"
+    if imported_count < len(records):
+        message += f" (รหัสซ้ำในไฟล์ {len(records) - imported_count} แถว ใช้แถวล่างสุด)"
     missing = [label for key, label in [('credits_earned', 'หน่วยกิต (ถือว่าเรียนตามแผน)'),
                                         ('academic_year', 'ชั้นปี')] if key not in fields]
     if missing:

@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -12,6 +13,8 @@ try:
     # create_all ไม่เพิ่มคอลัมน์ใหม่ให้ตารางที่มีอยู่แล้ว จึงต้องเพิ่ม academic_year เอง
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS academic_year INTEGER"))
+        # ฐานข้อมูลที่สร้างจากโค้ดรุ่นเก่ามี risk_level แค่ 20 ตัวอักษร เก็บข้อความระดับความเสี่ยงไม่พอ
+        conn.execute(text("ALTER TABLE risk_predictions ALTER COLUMN risk_level TYPE VARCHAR(100)"))
 except Exception as e:
     print("คำเตือนการเชื่อมต่อฐานข้อมูล:", e)
 
@@ -19,6 +22,15 @@ app = FastAPI(
     title="ระบบสนับสนุนการตัดสินใจทำนายความเสี่ยงพ้นสภาพนักศึกษา (DSS)",
     description="ระบบสำหรับอาจารย์ที่ปรึกษา เพื่อวิเคราะห์ทำนายความเสี่ยงของนักศึกษาด้วย AI และ SHAP",
     version="1.0.0"
+)
+
+# อนุญาตให้หน้าเว็บที่เปิดจากที่อื่นเรียก API ได้ (เช่น ดับเบิลคลิกเปิด index.html ตรง ๆ หรือ Live Server)
+# ถ้าไม่มี เบราว์เซอร์จะบล็อกการกดวิเคราะห์ (CORS) ระบบไม่ใช้ cookie/login จึงเปิดทุกที่มาได้
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ลงทะเบียน API Router
