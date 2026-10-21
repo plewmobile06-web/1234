@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+xgboost
+shap
+scikit-learn
+pandas
+pydantic
+python-dotenv
+anthropic
+python-multipart
+openpyxl

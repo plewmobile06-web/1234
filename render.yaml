@@ -1,0 +1,25 @@
+# ไฟล์ตั้งค่าสำหรับนำระบบขึ้น Render (https://render.com) แบบ Blueprint
+# สร้างทั้งเว็บ (FastAPI) และฐานข้อมูล PostgreSQL ให้อัตโนมัติ แล้วเชื่อมกันผ่าน DATABASE_URL
+services:
+  - type: web
+    name: dss-dropout-risk
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/students
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dss-db
+          property: connectionString
+      # ใส่ค่าเองในหน้า Render ตอนสร้าง (ไม่ใส่ก็ได้ ระบบใช้งานได้ปกติ ยกเว้นปุ่มให้ AI อ่านเอกสาร)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: dss-db
+    databaseName: dropout_dss
+    plan: free
