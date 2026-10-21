@@ -186,7 +186,7 @@
                         <p class="text-xs text-slate-500">อัปโหลดไฟล์ Excel/CSV ที่มีรหัสนักศึกษาและ GPAX (หัวคอลัมน์ไทยหรืออังกฤษก็ได้) หรือใช้ไฟล์ตัวอย่าง</p>
                     </div>
                 </div>
-                <a href="/api/v1/import-template" data-api-link="/import-template" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
+                <a href="/api/v1/import-template" data-api-link="/import-template" onclick="return ensureServer()" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
                     📄 โหลดไฟล์ตัวอย่าง (Template)
                 </a>
             </div>
@@ -215,7 +215,7 @@
                     <button onclick="deleteAllStudents()" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
                         🗑️ ลบข้อมูลทั้งหมด
                     </button>
-                    <a href="/api/v1/export-excel" data-api-link="/export-excel" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
+                    <a href="/api/v1/export-excel" data-api-link="/export-excel" onclick="return ensureServer()" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm">
                         📊 โหลดรายงาน Excel
                     </a>
                     <button onclick="loadStudents()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3.5 py-2.5 rounded-xl transition flex items-center gap-1">
@@ -248,19 +248,55 @@
         // ถ้าเปิดไฟล์ index.html ตรง ๆ (file://) หรือผ่านโปรแกรมอื่นในเครื่อง เช่น VS Code Live Server (พอร์ต 5500)
         // พอร์ตนั้นไม่มี API จึงต้องชี้ไปที่ server ของระบบที่พอร์ต 8000
         const LOCAL_API = "http://127.0.0.1:8000";
-        const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-        const API_BASE = window.location.protocol === "file:" || (isLocalHost && window.location.port !== "8000")
-            ? LOCAL_API
-            : window.location.origin;
+
+        // ที่อยู่ server (Python/FastAPI) สำหรับหน้าเว็บที่เปิดจากโฮสต์ที่มีแต่ไฟล์หน้าเว็บ เช่น GitHub Pages
+        // โฮสต์แบบนี้รัน Python ไม่ได้ ต้องนำ server ขึ้น Render ก่อน แล้วใส่ลิงก์ที่นี่
+        // เช่น "https://dss-dropout-risk.onrender.com" (ไม่ต้องมี / ปิดท้าย)
+        const REMOTE_API = "";
+
+        const host = window.location.hostname;
+        const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(host);
+        const isStaticHost = [".github.io", ".netlify.app", ".pages.dev", ".vercel.app"].some(d => host.endsWith(d));
+        let API_BASE;
+        if (window.location.protocol === "file:" || (isLocalHost && window.location.port !== "8000")) {
+            API_BASE = LOCAL_API;
+        } else if (isStaticHost) {
+            API_BASE = REMOTE_API.replace(/\/+$/, "");
+        } else {
+            API_BASE = window.location.origin;
+        }
         const API_URL = `${API_BASE}/api/v1`;
-        document.querySelectorAll('[data-api-link]').forEach(a => a.href = API_URL + a.dataset.apiLink);
+        document.querySelectorAll('[data-api-link]').forEach(a => a.href = API_BASE ? API_URL + a.dataset.apiLink : "#");
+
+        const NO_SERVER_MSG =
+            "หน้านี้เปิดจาก " + host + " ซึ่งเก็บได้แค่หน้าเว็บ รันระบบ AI และฐานข้อมูล (Python) ไม่ได้\n" +
+            "ต้องนำ server ขึ้น Render ก่อน แล้วใส่ลิงก์ server ในตัวแปร REMOTE_API ของไฟล์ index.html\n" +
+            "หรือเปิดระบบผ่านลิงก์ของ Render โดยตรง";
+
+        // คืน false (และแจ้งเตือน) ถ้าหน้าเว็บนี้ยังไม่มี server ให้เรียก
+        function ensureServer() {
+            if (API_BASE) return true;
+            alert(NO_SERVER_MSG);
+            return false;
+        }
 
         // fetch ล้มเหลวแบบ TypeError = ติดต่อ server ไม่ได้เลย (server ไม่ได้รัน หรือเบราว์เซอร์บล็อก)
         function connectionHelp(error) {
+            if (API_BASE !== LOCAL_API) {
+                return `ติดต่อ server ไม่ได้ (${API_BASE})\n` +
+                    "- server บน Render แบบฟรีจะหลับเมื่อไม่มีคนใช้ ให้รอประมาณ 1 นาทีแล้วลองใหม่\n" +
+                    `(รายละเอียด: ${error.message})`;
+            }
             return `ติดต่อ server ไม่ได้ (${API_BASE})\n` +
                 "- ตรวจว่ารัน server อยู่ (python -m uvicorn main:app --host 127.0.0.1 --port 8000)\n" +
                 "- แนะนำให้เปิดหน้าเว็บผ่าน http://127.0.0.1:8000 แทนการดับเบิลคลิกไฟล์ index.html\n" +
                 `(รายละเอียด: ${error.message})`;
+        }
+
+        // server ตอบกลับเป็นหน้าเว็บแทน JSON = ที่อยู่นั้นไม่ใช่ server ของระบบ
+        function notApiMessage(response) {
+            return `${API_BASE} ไม่ใช่ server ของระบบ (ตอบกลับรหัส ${response.status}) ` +
+                "ตรวจลิงก์ server ให้ถูกต้อง";
         }
 
         const MIN_TERMS = 1;
@@ -355,6 +391,7 @@
         }
 
         async function readDocument() {
+            if (!ensureServer()) return;
             const input = document.getElementById('docFiles');
             if (input.files.length === 0) {
                 alert("กรุณาเลือกภาพหรือไฟล์ PDF ของเอกสารก่อน");
@@ -428,6 +465,7 @@
 
         async function handlePredict(event) {
             event.preventDefault();
+            if (!ensureServer()) return;
             const data = {
                 student_id: document.getElementById('student_id').value,
                 first_name: document.getElementById('first_name').value,
@@ -482,6 +520,7 @@
         }
 
         async function uploadExcel() {
+            if (!ensureServer()) return;
             const fileInput = document.getElementById('excelFile');
             if (fileInput.files.length === 0) {
                 alert("กรุณาเลือกไฟล์ Excel ก่อนอัปโหลด");
@@ -498,7 +537,7 @@
                 });
 
                 const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.detail || "เกิดข้อผิดพลาดในการอัปโหลดไฟล์");
+                if (!response.ok) throw new Error(result.detail || notApiMessage(response));
 
                 alert(result.message);
                 fileInput.value = "";
@@ -509,6 +548,7 @@
         }
 
         async function deleteAllStudents() {
+            if (!ensureServer()) return;
             if (!confirm("⚠️ คำเตือน: คุณต้องการลบข้อมูลนักศึกษาและประวัติการทำนายทั้งหมดในระบบใช่หรือไม่?")) return;
             try {
                 const response = await fetch(`${API_URL}/delete-all-students`, { method: 'DELETE' });
@@ -565,10 +605,23 @@
             box.scrollIntoView({ behavior: 'smooth' });
         }
 
+        function showTableMessage(text) {
+            document.getElementById('studentTableBody').innerHTML =
+                `<tr><td colspan="6" class="text-center p-6 text-red-500 whitespace-pre-line">${text}</td></tr>`;
+        }
+
         async function loadStudents() {
+            if (!API_BASE) {
+                showTableMessage(NO_SERVER_MSG);
+                return;
+            }
             try {
                 const res = await fetch(`${API_URL}/students`);
-                const students = await res.json();
+                const students = await res.json().catch(() => null);
+                if (!res.ok || !Array.isArray(students)) {
+                    showTableMessage("โหลดรายชื่อไม่สำเร็จ: " + notApiMessage(res));
+                    return;
+                }
                 
                 let total = students.length;
                 let high = 0, med = 0, low = 0;
@@ -607,10 +660,12 @@
                 `).join('');
             } catch (e) {
                 console.error("โหลดรายชื่อไม่สำเร็จ", e);
+                showTableMessage(connectionHelp(e));
             }
         }
 
         async function deleteStudent(studentId) {
+            if (!ensureServer()) return;
             if (!confirm(`ต้องการลบข้อมูลรหัสนักศึกษา ${studentId} ใช่หรือไม่?`)) return;
             try {
                 await fetch(`${API_URL}/delete-student/${studentId}`, { method: 'DELETE' });
