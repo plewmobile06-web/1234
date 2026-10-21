@@ -7,3 +7,7 @@ __pycache__/
 
 # โมเดลสำรองรุ่นเก่า (ไม่ใช้ในระบบ)
 ml_models/*.backup.pkl
+
+# คู่มือใช้งานในเครื่อง (ไม่ขึ้น GitHub)
+*.txt
+!requirements.txt
